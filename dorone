@@ -1,1 +1,295 @@
+//ドローン最終プログラム
+//3つ表示版 最下部に必要なもの、注意点・要点を記す
+#include <SPI.h>
+#include <WiFi.h>
+#include <LoRa.h>
+#include <Wire.h>
+#include "image.h" 
 
+#define SCK     5    // GPIO5  -- SX1278's SCK
+#define MISO    19   // GPIO19 -- SX1278's MISO
+#define MOSI    27   // GPIO27 -- SX1278's MOSI
+#define SS      18   // GPIO18 -- SX1278's CS
+#define RST     14   // GPIO14 -- SX1278's RESET
+#define DI0     26   // GPIO26 -- SX1278's IRQ(Interrupt Request)
+#define BAND    923E6
+
+//接続先のSSID,PASSWORDを入力
+const char *ssid="*******";
+const char *password="*******";
+
+//IPアドレスの固定化
+const IPAddress ip(192,168,11,11);//必ずこのIPアドレスにしなければならないと言う訳ではない。
+const IPAddress gate(192,168,11,1);
+const IPAddress subnet(255,255,255,0);
+
+WiFiServer server(80);
+
+//変数の設定
+String header;
+String GPS;
+String pre="\"";
+String Let[5];
+String sub="\"";
+String Long[5];
+String GPS1[5];
+String GPSi;
+String GPS10;
+String GPS20;
+String GPS30;
+String A="人A　 :";
+String B="自転車:";
+String C="人B　 :";
+String AA="\"人A\"";
+String BB="\"自転車\"";
+String CC="\"人B\"";
+
+//LoRa設定
+String rssi = "RSSI --";
+String packSize = "--";
+String packet ;
+String cbk(int packetSize) {
+  packet ="";
+  packSize = String(packetSize,DEC);
+  for (int i = 0; i < packetSize; i++) { packet += (char) LoRa.read(); }
+  rssi = "RSSI " + String(LoRa.packetRssi(), DEC) ;
+  Serial.println(packet);
+  return packet;
+}
+
+
+void setup() {
+  Serial.begin(115200);
+  //WiFi設定
+  WiFi.config(ip,gate,subnet);
+  Serial.print("Connecting to");
+  Serial.println(ssid);
+  WiFi.begin(ssid,password);
+  while (WiFi.status() !=WL_CONNECTED){
+    delay(500);
+    Serial.print(".");  
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+  server.begin();
+
+  //LoRa設定
+  Serial.println();
+  Serial.println("LoRa Receiver Callback");
+  SPI.begin(SCK,MISO,MOSI,SS);
+  LoRa.setPins(SS,RST,DI0);  
+  if (!LoRa.begin(923E6)) {
+    Serial.println("Starting LoRa failed!");
+    while (1);
+  }
+  //LoRa.onReceive(cbk);
+  LoRa.receive();
+  Serial.println("init ok");
+  delay(1500);
+  GPS1[0]="";GPS1[1]="";GPS1[2]=""; 
+}
+
+void loop() {
+  //LoRa受信
+  int packetSize=LoRa.parsePacket();
+  if (packetSize){
+    Serial.println("Get GPS");
+    GPS=cbk(packetSize);
+    GPSi=GPS[29]; //個体識別判定用に取り出す
+  }
+  delay(100); //受信間隔
+  Serial.println("Wait");
+  Serial.println(GPSi);
+  if(GPSi.equals("4")){ //1つ目の位置情報の処理
+    GPS1[0]="";
+    Let[0]="";
+    Long[0]="";
+    for(int a=0;a<29;a++){
+      GPS1[0]+=GPS[a];
+    }
+    for(int j=0;j<9;j++){
+      Let[0]+=GPS[j];
+    }    
+    for(int k=10;k<20;k++){
+      Long[0]+=GPS[k];
+    }
+  } 
+  if(GPSi.equals("3")){//2つ目の位置情報の処理
+    GPS1[1]="";
+    Let[1]="";
+    Long[1]="";
+    for(int a=0;a<29;a++){
+     GPS1[1]+=GPS[a];
+    }
+    for(int j=0;j<9;j++){
+      Let[1]+=GPS[j];
+    }    
+    for(int k=10;k<20;k++){
+      Long[1]+=GPS[k];
+    }
+  }
+  if(GPSi.equals("7")){//3つ目の位置情報の処理
+    GPS1[2]="";
+    Let[2]="";
+    Long[2]="";
+    for(int a=0;a<29;a++){
+      GPS1[2]+=GPS[a];
+    }
+    for(int j=0;j<9;j++){
+      Let[2]+=GPS[j];
+    }    
+    for(int k=10;k<20;k++){
+      Long[2]+=GPS[k];
+    }
+  }
+  GPS10=String(pre+A+GPS1[0]+sub); //表示するための箇所
+  Serial.println(GPS10);
+  GPS20=String(pre+B+GPS1[1]+sub); 
+  Serial.println(GPS20);
+  GPS30=String(pre+C+GPS1[2]+sub);
+  Serial.println(GPS30);
+  
+  WiFiClient client =server.available();
+  //PCからこのIPアドレスにアクセス仕様とすると、このif文に入る
+  if (client){
+    Serial.println("New Client.");
+    String currentLine="";
+    while (client.connected()){
+      if (client.available()){
+        char c=client.read();
+        Serial.write(c);
+        header += c; // header変数に積み込み
+        if (c == '\n') { // 届いたデータが改行コードだった時
+        // もし現在の行が空白ならば、この改行コードのみ受け取る
+          if (currentLine.length() == 0) {
+             client.println("HTTP/1.1 200 OK");
+            client.println("Content-type:text/html; charset = utf-8;");
+            client.println("Connection: close");
+            client.println();
+            // htmlを表示
+            client.println("<!DOCTYPE html><html>");
+            client.println("<html lang=\"en\">");
+            client.println("<head>");
+            client.println("<meta charset='UTF-8'>");
+            client.println("<style> #maps {height: 500px;width : 800px;}</style>"); //map size
+            client.println("<meta http-equiv='X-UA-Compatible' content='IE=edge'>");
+            client.println("<meta name='viewport' content='width=device-width, initial-scale=1.0'>");
+            client.println("<meta http-equiv = \"refresh\" content = \"3\"/>"); //更新は3秒ごとが良
+            client.println("<title>Project_AMATERASU</title>");
+            client.println("</head>");
+
+            // ページ本体（bodyタグ内）
+            client.println("<body bgcolor=\"lightcyan\" onload=\"a()\">");
+            client.println("<h1><font face=\"Times New Roman\"><font color=\"deepskyblue\">AMATERASU</font></font></h1>");
+            client.println("<h3><font face=\"Times New Roman\"><font color=\"deepskyblue\">A</font>ll kind of <font color=\"deepskyblue\">MA</font>terial(<font color=\"deepskyblue\">MA</font>n)  ");
+            client.println("<font color=\"deepskyblue\">T</font>racking by <font color=\"deepskyblue\">E</font>nergy of lo<font color=\"deepskyblue\">RA</font>&wifi ");
+            client.println("<font color=\"deepskyblue\">S</font>ystem <font color=\"deepskyblue\">U</font>nit</font></h3>");
+            client.println("<font face=\"impact\" color=\"tomato\" size=\"5\">Location information</font>");
+            client.println("<div style='padding: 10px; margin-botton:10px; border: 1px solid#333333; background-color:#ffffff;'>");
+            client.println("<font face=\"serif\">");
+            client.println("<font color=\"orange\"><div id='edit_area'></div></font><font color=\"red\"><div id='edit_area1'></div></font>");
+            client.println("<font color=\"blue\"><div id='edit_area2'></div></font>");
+            client.println("</div>");
+            client.println("<script>");//</script>まではJavascriptの記述
+            //地図の初期表示設定
+            client.println("function initMap() {");
+            client.println("var mapPosition = {lat: 33.891964, lng: 130.839941}\n");
+            client.println("var mapArea = document.getElementById('maps');");
+            client.println("var mapOptions = {center: mapPosition,zoom: 16,};");
+            client.println( "var map = new google.maps.Map(mapArea, mapOptions);}");
+            client.println("function a() {");
+            client.println("function markEv(i){marker[i].addListener('click', function(){infoWindow[i].open(map,marker[i]); });}");
+            //緯度経度時間表示
+            client.println("var geo_text =");
+            client.println(GPS10);//1つ目
+            client.println(";var geo_text1 =");
+            client.println(GPS20);//2つ目
+            client.println(";var geo_text2 =");
+            client.println(GPS30);//3つ目
+            client.println(";document.getElementById('edit_area').innerHTML = geo_text ;");//1つ目
+            client.println("document.getElementById('edit_area1').innerHTML = geo_text1;");//2つ目
+            client.println("document.getElementById('edit_area2').innerHTML = geo_text2;");//3つ目
+            //LoRaで受信した位置情報の処理
+            client.println("var marker=[];");
+            client.println("var infoWindow=[];");
+            client.println("const image1='https://maps.google.com/mapfiles/ms/icons/yellow-dot.png';");
+            client.println("const image2='https://maps.google.com/mapfiles/ms/icons/red-dot.png';");
+            client.println("const image3='https://maps.google.com/mapfiles/ms/icons/blue-dot.png';");
+            client.println("var mD =[{ name:'1',},{ name: '2',},{ name: '3',},];");//1つ目、2つ目、3つ目
+            
+            client.println("mD[0]['lat']=");//1つ目
+            client.println(Let[0]); 
+            client.println(";mD[0]['lng']=");
+            client.println(Long[0]); 
+            client.println(";mD[0]['icon']=image1;");
+            client.println("mD[0]['time']=");
+            client.println(AA);
+           
+            client.println(";mD[1]['lat']=");//2つ目
+            client.println(Let[1]); 
+            client.println(";mD[1]['lng']=");
+            client.println(Long[1]); //lng1
+            client.println(";mD[1]['icon']=image2;");
+            client.println("mD[1]['time']=");
+            client.println(BB);
+           
+            client.println(";mD[2]['lat']=");//3つ目
+            client.println(Let[2]); 
+            client.println(";mD[2]['lng']=");
+            client.println(Long[2]); 
+            client.println(";mD[2]['icon']=image3;");
+            client.println("mD[2]['time']=");
+            client.println(CC);
+            
+            client.println(";var lat=33.891964;");
+            client.println("var lng=130.839941;"); 
+            client.println("var mapPosition = {lat,lng}\nvar mapArea = document.getElementById('maps');");
+            client.println("var mapOptions = {center: mapPosition,zoom: 15,};");
+            client.println("var map = new google.maps.Map(mapArea, mapOptions);");
+            client.println("for (var i = 0; i <mD.length; i++) {");
+            client.println("var mLL ={lat: mD[i]['lat'], lng: mD[i]['lng']};");
+            client.println("marker[i]= new google.maps.Marker({position:  mLL,map: map,}); ");//マーカーを置く
+            client.println(" infoWindow[i]=new google.maps.InfoWindow({content:'<div class=\"sample\">'+mD[i]['time']+'</div>'})\n");
+            //マーカーをクリックした時に表示する文字の設定
+            client.println("markEv(i);");
+            client.println("marker[i].setOptions({icon: {url: mD[i]['icon'],} }); }}");//マーカーアイコンの変更
+            client.println("</script>");      
+            client.println("<br>");
+            //更新秒数の記述(以下2行はなくても良い)
+            //client.println("<div style=\"line-height:1;\">Updated every 3 seconds<br>");
+            //client.println("If it takes some time to reload, please push reload button</div>");
+            //地図の表示
+            client.println( "<div id='maps'></div>");
+            client.println( "<script src='https://maps.googleapis.com/maps/api/js?key=APIkey&callback=initMap' async></script>");//APIkeyは自分で取得する
+            client.println("<br>");
+            //client.println("<p style=\"text-align: right\"><font size=\"4\">Made by CHO group</font></font></p>");
+            client.println("</body>");
+            client.println("</html>");
+            delay(1000);
+            break;
+            }
+       }
+     }
+    }
+    // ヘッダーをリセット　ここを変更
+    header = "";
+    // 接続をリセット
+    client.stop();
+    Serial.println("Client disconnected.");
+    Serial.println("");
+   }
+}
+/*必要なもの
+WiFi(学内WiFiもホットスポットを利用すれば使用可)グラウンドで行う場合はポケットWiFi or テザリングの使用を推奨
+LoRaデバイス:4つ(ドローン用のものを含む)
+WiFiに接続できるPC
+移動体用のプログラム
+注意点・要点
+ESP32をArduinoで使えるようにするためには右のURLを参考にhttps://www.mgo-tec.com/arduino-core-esp32-install
+ライブラリはスケッチに入ってライブラリをインクルードする
+(image.hはGithubから取り出したhttps://github.com/LilyGO/TTGO-T-Beam/blob/master/OLED_LoRa_Receive/images.h)
+2つに変更したいとき3つ目の記述をメモの状態にする。
+LoRa通信のプログラムはhttps://github.com/LilyGO/TTGO-T-Beamを参考にした
+*/
