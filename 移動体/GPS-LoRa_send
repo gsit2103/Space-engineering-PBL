@@ -1,4 +1,4 @@
-//移動体_最終プログラム
+//移動体_プログラム(最終ではない？)
 #include <SPI.h>
 #include <LoRa.h>
 #include <Wire.h>
