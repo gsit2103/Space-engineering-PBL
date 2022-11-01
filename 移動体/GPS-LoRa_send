@@ -1,1 +1,144 @@
-coming soon
+//移動体_最終プログラム
+#include <SPI.h>
+#include <LoRa.h>
+#include <Wire.h>
+#include <TinyGPS++.h>
+#include <HardwareSerial.h>
+#include <TimeLib.h>
+#include <SoftwareSerial.h>
+//#include "SSD1306.h"
+#include "images.h"
+#define SCK     5    // GPIO5  -- SX1278's SCK
+#define MISO    19   // GPIO19 -- SX1278's MISnO
+#define MOSI    27   // GPIO27 -- SX1278's MOSI
+#define SS      18   // GPIO18 -- SX1278's CS
+#define RST     14   // GPIO14 -- SX1278's RESET
+#define DI0     26   // GPIO26 -- SX1278's IRQ(Interrupt Request)
+#define BAND  923E6
+unsigned int counter = 0;
+//SSD1306 display(0x3c, 21, 22);
+String rssi = "RSSI --";
+String packSize = "--";
+String packet ;
+#define time_offset   32400  // define a clock offset of 3600*9 seconds (9 hour) ==> JST = UTC + 9
+#define S_RX    12
+#define S_TX    34
+SoftwareSerial SoftSerial(S_RX, S_TX);
+TinyGPSPlus gps;
+HardwareSerial Serial0(2);
+char Time[]  = "00:00:00"; //表記変えるならここを変える、あと下も
+char Date[]  = "2000-00-00";
+byte last_second, Second, Minute, Hour, Day, Month;
+int Year;
+void setup() {
+  pinMode(16,OUTPUT);
+  pinMode(2,OUTPUT);
+  digitalWrite(16, LOW);    // set GPIO16 low to reset OLED
+  //delay(50);  要確認
+  digitalWrite(16, HIGH); // while OLED is running, must set GPIO16 in high
+  Serial.begin(115200);
+  while (!Serial);
+  Serial.println("Goodnight moon!");
+  Serial0.begin(9600,SERIAL_8N1,34,12);
+  Serial0.println("Hello, world?");
+  Serial.println();
+  Serial.println("LoRa Sender Test");
+  SPI.begin(SCK,MISO,MOSI,SS);
+  LoRa.setPins(SS,RST,DI0);
+  if (!LoRa.begin(923E6)) {
+    Serial.println("Starting LoRa failed!");
+    while (1);
+  }
+  //LoRa.onReceive(cbk);
+  //LoRa.receive();
+  Serial.println("init ok");
+  //display.init();
+  //display.flipScreenVertically();
+  //display.setFont(ArialMT_Plain_10);
+  //delay(1500);  要確認、必要かも？
+}
+void loop()
+{
+  int i=0;
+  float ave1=0,ave2=0;
+  float a[5];
+  float b[5];
+  while (Serial0.available() > 0)
+  {
+    //Serial.println("Waiting...");
+    char c = Serial0.read();
+    //Serial.print(c);
+    gps.encode(c);
+//get time from GPS
+    if (gps.time.isValid())
+          {
+            Minute = gps.time.minute();
+            Second = gps.time.second();
+            Hour   = gps.time.hour();
+          }
+// get date from GPS
+    if (gps.date.isValid())
+          {
+            Day   = gps.date.day();
+            Month = gps.date.month();
+            Year  = gps.date.year();
+          }
+    if(last_second != gps.time.second())
+          {
+            last_second = gps.time.second();
+            setTime(Hour, Minute, Second, Day, Month, Year);
+            adjustTime(time_offset);
+// update time　表記変えるならここも変更
+            Time[6] = second() / 10 + '0';
+            Time[7] = second() % 10 + '0';
+            Time[3]  = minute() / 10 + '0';
+            Time[4] = minute() % 10 + '0';
+            Time[0]  = hour()   / 10 + '0';
+            Time[1]  = hour()   % 10 + '0';
+// update date array
+    Date[2] = (year()  / 10) % 10 + '0';
+    Date[3] =  year()  % 10 + '0';
+    Date[5]  =  month() / 10 + '0';
+    Date[6] =  month() % 10 + '0';
+    Date[8]  =  day()   / 10 + '0';
+    Date[9]  =  day()   % 10 + '0';
+          }
+    if (gps.location.isUpdated())
+      {
+        Serial.print("LAT=");
+        Serial.print(gps.location.lat(), 6);
+        Serial.print("LONG=");
+        Serial.print(gps.location.lng(), 6);
+        Serial.print("5");
+        //Serial.print("Date=");
+        //Serial.print(Date);
+        Serial.print("Time=");
+        Serial.println(Time);
+        LoRa.beginPacket();
+        LoRa.print(gps.location.lat(), 6); //LAT
+        LoRa.print(gps.location.lng(), 6); //LONG
+        LoRa.print("5");
+        //LoRa.print(Date);
+        LoRa.print(Time); //TIME
+        //delay(500);
+        LoRa.endPacket();
+      }
+  }
+  Serial.print("LAT=");
+  Serial.print(gps.location.lat(), 6);
+  Serial.print("LONG=");
+  Serial.print(gps.location.lng(), 6);
+  Serial.println("5");
+  //Serial.print("Date=");
+  //Serial.print(Date);
+  Serial.print("Time=");
+  Serial.println(Time);
+  LoRa.beginPacket();
+  LoRa.print(gps.location.lat(), 6); //LAT
+  LoRa.print(gps.location.lng(), 6); //LONG
+  LoRa.print("5");
+  //LoRa.print(Date);
+  LoRa.print(Time); //TIME
+  //delay(500);
+  LoRa.endPacket();
+}
