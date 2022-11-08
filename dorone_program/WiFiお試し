@@ -1,0 +1,129 @@
+//ESP32　Wi-Fi ルーター経由　お試し
+#include <WiFi.h>
+#include "SSD1306.h"
+SSD1306 display(0x3c,21,22);
+
+const char* ssid ="Xperis9600"; //接続先のSSID
+const char* password="aaf8d7d4600d"; //接続先のパスワード
+
+WiFiServer server(80);
+
+String header;
+
+char* input(){
+  char *a;
+   a="yesを押しましたね。";
+   return a;
+}
+
+void setup() {
+  display.init();
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(0,0,"Standby OK!");
+  display.display();
+  Serial.begin(115200);
+  Serial.print("Connecting to");
+  Serial.println(ssid);
+  WiFi.begin(ssid,password);
+  while (WiFi.status() !=WL_CONNECTED){
+    delay(500);
+    Serial.print(".");  
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+  server.begin();
+}
+
+void loop() {
+  WiFiClient client =server.available();
+  String mozi;
+  
+  if (client){
+    Serial.println("New Client.");
+    String currentLine="";
+    while (client.connected()){
+      if (client.available()){
+        char c=client.read();
+        Serial.write(c);
+        header += c; // header変数に積み込み
+        if (c == '\n') { // 届いたデータが改行コードだった時
+        // もし現在の行が空白ならば、この改行コードのみ受け取る
+        // つまりHTTPリクエストの終わりなので、レスポンスを返す
+          if (currentLine.length() == 0) {
+             mozi=input();
+             // HTTPヘッダは（HTTP/1.1 200 OK)のようなステータスコードから始まる
+             // 次にコンテントタイプを送信。今回はhtml形式なので以下のようにする
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-type:text/html; charset = utf-8;");
+            client.println("Connection: close");
+            client.println();
+
+            // htmlを表示
+            client.println("<!DOCTYPE html><html>");
+            client.println("<head><meta name = \"viewport\" content = \"width = device-width, initial-scale = 1\">");
+            client.println("<link rel = \"icon\" href = \"data:,\">");
+           //自動リフレッシュ
+            //client.println("<meta http-equiv = \"refresh\" content = \"3\"/>");
+            // タイトルを表示
+            client.println("<title>ESP32_Test</title>");
+            client.println("<style>h1{text-align: center;}");
+            client.println("</style></head>");
+            
+            //client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
+            //client.println(".button { background-color: #5555FF; border: none; color: white; padding: 16px 40px;");
+            //client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
+            //client.println(".button2 {background-color: #FF5555;}</style></head>");
+
+            // ページ本体（bodyタグ内）
+            //client.println("<style>body{text-align: center}">");
+            client.println("<meta charset =UTF-8>");
+            client.println("<body><h1>ESP32_input</h1>");
+            client.println();
+            client.println("<p>ボタンを押すとESP32からメッセージが届く</p>");
+            client.println("<br>");
+            client.println("<p><a href=\"/start\"><button class=\"button\">start</button></a></p>");
+            if(header.indexOf("GET /start")>=0){
+              client.println("始めますか？"); 
+              client.println("<p><a href=\"/start/Y\"><button class=\"button b1\">Yes</button></a></p>");
+              client.println("<p><a href=\"/start/N\"><button class=\"button b2\">No</button></a></p>");
+              if(header.indexOf("GET /start/Y")>=0&&header.indexOf("GET /start/Y/M")==-1&&header.indexOf("GET /start/Y/S")==-1){
+                delay(2000);
+                client.println(mozi);
+                delay(1000);
+                client.println("次です");
+                delay(2000);
+                client.println("<p><a href=\"/start/Y/M\"><button class=\"button button1\">進む</button></a></p>");
+                client.println("<p><a href=\"/start/Y/S\"><button class=\"button button2\">止まる</button></a></p>");
+              }
+              else if(header.indexOf("GET /start/N")>=0){
+                client.println("ここで終了です");
+                delay(5000);
+                client.println("<a href=\"/start\"></a>");
+              }
+              client.println("<br>");
+            }
+            if (header.indexOf("GET /start/Y/M")>=0){
+                  client.println("これ以上は進めません!!!");
+                  delay(2000);
+                  client.println("<a href=\"/start\"></a>");
+            }
+            else if (header.indexOf("GET /start/Y/S")>=0){
+                  client.println("ここで終了です");
+                  delay(2000);
+                  client.println("<a href=\"/start\"></a>");
+            }
+           
+            // ヘッダーをリセット
+            header = "";
+            // 接続をリセット
+            client.stop();
+            Serial.println("Client disconnected.");
+            Serial.println("");
+            }
+       }
+     }
+    }
+   }
+}
