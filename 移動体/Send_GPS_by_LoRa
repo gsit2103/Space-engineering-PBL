@@ -1,0 +1,122 @@
+//lora Sender
+#include <SPI.h>
+#include <LoRa.h>
+#include <Wire.h>  
+#include "image.h"
+#include <TinyGPS++.h>
+//#include <SoftwareSerial.h>
+#include <HardwareSerial.h>
+
+#define SCK     5    // GPIO5  -- SX1278's SCK
+#define MISO    19   // GPIO19 -- SX1278's MISnO
+#define MOSI    27   // GPIO27 -- SX1278's MOSI
+#define SS      18   // GPIO18 -- SX1278's CS
+#define RST     14   // GPIO14 -- SX1278's RESET
+#define DI0     26   // GPIO26 -- SX1278's IRQ(Interrupt Request)
+#define BAND  923E6
+
+unsigned int counter = 0;
+
+//SSD1306 display(0x3c, 21, 22);
+String rssi = "RSSI --";
+String packSize = "--";
+String packet ;
+
+
+TinyGPSPlus gps;
+HardwareSerial Serial0(2);
+/*hardwareSerialはハードウェアで持つ機能を用いてシリアル通信をする。これらで利用するピンがデフォルトで決まっている
+しかし、()の中が2のSeiral0(2)の時はいける？、自分で設定できる*/ 
+//SoftwareSerial ss;//(PIN_RX,PIN_TX);//(Rx,Tx)
+/*SoftwareSerialはどのピンでも割り当てることができる、ソフトウェア上でシリアル通信をする*/
+void setup() {
+  //Serial.begin(57600);
+  Serial.begin(115200);
+ while (!Serial) {
+ ; 
+ }
+  //Serial.println("Goodnight moon!");
+  Serial0.begin(9600,SERIAL_8N1,34,12);
+  Serial0.println("Hello, world?");
+
+  Serial.println();
+  Serial.println("LoRa Sender Test");
+  
+  SPI.begin(SCK,MISO,MOSI,SS);
+  LoRa.setPins(SS,RST,DI0);
+  if (!LoRa.begin(923E6)) {
+    Serial.println("Starting LoRa failed!");
+    while (1);
+  }
+  //LoRa.onReceive(cbk);
+//  LoRa.receive();
+  Serial.println("init ok");
+  delay(1500);
+  
+}
+ 
+void loop() { // run over and over
+ //Serial.println(Serial0.available());
+ //int count=0;
+ int i=0;
+ float ave1=0,ave2=0;
+ float a[5];
+ float b[5];
+ while (Serial0.available() > 0){
+  //Serial.println("Waiting...");
+ char c = Serial0.read();
+ //Serial.print(c);
+ gps.encode(c);
+ if (gps.location.isUpdated()){
+   Serial.print("LAT=");
+   Serial.println(gps.location.lat(), 6);
+   Serial.print("LONG="); 
+   Serial.println(gps.location.lng(), 6);
+   delay(1000);
+
+    // send packet
+   LoRa.beginPacket();
+   LoRa.print(gps.location.lat(), 6);
+   LoRa.print(gps.location.lng(), 6);
+   //LoRa.print(counter);
+   LoRa.endPacket();
+  
+   //5回分の平均を取る
+   /*
+   a[i]=gps.location.lat();
+   b[i]=gps.location.lng();
+   i++;
+   Serial.print("count=");
+   Serial.println(i);
+   if(i==5){
+     ave1=(a[0]+a[1]+a[2]+a[3]+a[4])/5;
+     ave2=(b[0]+b[1]+b[2]+b[3]+b[4])/5;
+     Serial.print("AVERAGE1=");
+     Serial.println(ave1,6);
+     Serial.print("AVERAGE2=");
+     Serial.println(ave2,6);
+     i=0;
+     ave1=0;
+     ave2=0;
+     delay(2000);
+   }
+   */
+ }
+  /*else{Serial.print(".");
+       delay(1000);}*/
+ }
+}
+   /*double x=gps.location.lat()-33.8321;
+   double y=gps.location.lng()-130.7999;
+   Serial.println(sqrt(x*x+y*y));
+   */
+ /*
+ if(sqrt(x*x+y*y)<=0.07){
+    digitalWrite(8,HIGH);
+    digitalWrite(9,LOW);
+    }
+  }
+ }
+}*/
+
+/*結果:成功した。但し、使用する際は外に出ないと取得しなさそう、外に出てモジュール近くのLEDランプが点滅したら大丈夫 */
